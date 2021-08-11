@@ -1,5 +1,9 @@
 # True := White
 
+import math
+from functools import reduce
+import matplotlib.pyplot as plt
+from shapely import geometry
 from sys import path
 from PIL import Image
 import numpy as np
@@ -7,6 +11,9 @@ import copy
 from statistics import mean
 import random
 from collections import deque
+import alphashape
+from descartes import PolygonPatch
+import pandas as pd
 
 from numpy.core.arrayprint import DatetimeFormat
 random.seed(0)
@@ -172,34 +179,60 @@ class Drawing:
         im.save(name, format='png')
 
 
-im = Image.open('contrast_small.jpg')
-# im = Image.open('sargent.jpg')
+im = Image.open('contrast.jpg')
+# im = Image.open('sliver.jpg')
 
 dithered = im.convert('1')
 # dithered.show()
 
 source = np.array(dithered)
 drawing = Drawing(source)
-drawing.show()
-while True:
-    if not drawing.step():
-        options = []
-        for y in range(drawing.h):
-            for x in range(drawing.w):
-                if not drawing.blocked[y][x] and not drawing.data[y][x]:
-                    options.append((x, y))
-        if len(options) == 0:
-            break
-        else:
-            print(len(options))
-        drawing.head = random.choice(options)
-        for i in range(-1, 2):
-            for j in range(-1, 2):
-                if i or j:
-                    x = drawing.head[0] + i
-                    y = drawing.head[1] + j
-                    if x >= 0 and y >= 0 and x < drawing.w and y < drawing.h:
-                        drawing.data[y][x] = True
+data = drawing.data
+# print('here')
+points = []
 
-        drawing.blocked[drawing.head[1]][drawing.head[0]] = True
-drawing.show()
+for j in range(len(data)):
+    for i in range(len(data[0])):
+        if not data[j][i]:
+            points.append((i, j))
+
+# HULLS METHOD
+# hulls = []
+# counter = 0
+# while len(points) > 2:
+#     print(len(points))
+#     poly = geometry.Polygon(points)
+#     hull = poly.convex_hull
+#     x, y = hull.exterior.xy
+#     plt.plot(x, y)
+#     for xx, yy in zip(x[:-1], y[:-1]):
+#         # print((xx, yy))
+#         point = (int(xx), int(yy))
+#         points.remove(point)
+#     hulls.append(hull)
+#     counter += 1
+
+# ALPHA SHAPE METHOD
+# points_2d = [
+#     [1, 1], [1, 2], [2, 1], [2, 2]
+# ]
+# points_2d = [(0., 0.), (0., 1.), (1., 1.), (1., 0.),
+#  (0.5, 0.25), (0.5, 0.75), (0.25, 0.5), (0.75, 0.5)]
+# print('here')
+# alpha_shape = alphashape.alphashape(points)
+# print(alpha_shape)
+# fig, ax = plt.subplots()
+# ax.scatter(*zip(*points))
+# ax.add_patch(PolygonPatch(alpha_shape, alpha=0.2))
+
+# ANGLE METHOD
+p = points
+center = reduce(lambda a, b: (a[0] + b[0], a[1] + b[1]), p, (0, 0))
+center = (center[0] / len(p), (center[1] / len(p)))
+p.sort(key=lambda a: math.atan2(a[1] - center[1], a[0] - center[0]))
+
+poly = geometry.Polygon(p)
+# hull = poly.convex_hull
+x, y = poly.exterior.xy
+plt.plot(x, y)
+plt.show()

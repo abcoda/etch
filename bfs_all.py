@@ -1,5 +1,3 @@
-# True := White
-
 from sys import path
 from PIL import Image
 import numpy as np
@@ -22,39 +20,19 @@ class Node():
 class Drawing:
     def __init__(self, source):
         h_orig, w_orig = source.shape
-        self.flag_index = 0
+        # self.flag_index = 0
         self.h = h_orig * 2
         self.w = w_orig * 2
-
-        # im = Image.fromarray(source)
-        # im.show()
-
         self.data = np.ones((h_orig*2, w_orig*2), dtype='bool')
         for j in range(h_orig):
             for i in range(w_orig):
                 self.data[j*2][i*2] = source[j][i]
 
-        # r = 3
-        # for j in range(len(self.data)):
-        #     for i in range(len(self.data[0])):
-        #         neighbor_found = False
-        #         for jj in range(-r, r+1, 1):
-        #             for ii in range(-r, r+1, 1):
-        #                 if i + ii < len(self.data[0]) and i + ii > 0:
-        #                     if j + jj < len(self.data) and j + jj > 0:
-        #                         if jj or ii:
-        #                             if not self.data[j + jj][i + ii]:
-        #                                 neighbor_found = True
-        #                                 break
-        #             if neighbor_found:
-        #                 break
-        #         if not neighbor_found:
-        #             self.data[j][i] = True
         # im = Image.fromarray(self.data)
         # im.show()
 
         self.blocked = np.zeros((self.h, self.w), dtype='bool')
-        self.flagged = np.zeros((self.h, self.w), dtype='bool')
+        # self.flagged = np.zeros((self.h, self.w), dtype='bool')
 
         self.head = (0, 0)
 
@@ -97,7 +75,6 @@ class Drawing:
         frontier = deque([Node(start, None, None)])
         explored = set()
 
-        d_max = 5
         d = 1
         while True:
             if len(frontier) == 0:
@@ -160,8 +137,6 @@ class Drawing:
                     frontier.append(Node(loc, node, action))
 
             d += 1
-            # if d > d_max:
-            # return False
 
     def show(self):
         im = Image.fromarray(self.data)
@@ -172,22 +147,22 @@ class Drawing:
         im.save(name, format='png')
 
 
-im = Image.open('contrast_small.jpg')
-# im = Image.open('sargent.jpg')
-
+im = Image.open('contrast.jpg')
 dithered = im.convert('1')
 # dithered.show()
 
 source = np.array(dithered)
 drawing = Drawing(source)
-drawing.show()
 while True:
     if not drawing.step():
+        # print("no connection possible")
         options = []
         for y in range(drawing.h):
             for x in range(drawing.w):
                 if not drawing.blocked[y][x] and not drawing.data[y][x]:
                     options.append((x, y))
+        # options = [(x, y) for x, y in drawing.data[row] for row in drawing.data if not drawing.blocked[y]
+                #    [x] and not drawing.data[y][x]]
         if len(options) == 0:
             break
         else:
@@ -200,6 +175,8 @@ while True:
                     y = drawing.head[1] + j
                     if x >= 0 and y >= 0 and x < drawing.w and y < drawing.h:
                         drawing.data[y][x] = True
+        # drawing.data[0][:2] = True
+        # drawing.data[1][:2] = True
 
         drawing.blocked[drawing.head[1]][drawing.head[0]] = True
 drawing.show()
