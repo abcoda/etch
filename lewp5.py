@@ -1,9 +1,10 @@
 from tkinter import Tk, Canvas, Frame, BOTH
 from PIL import Image
 import numpy as np
-import keyboard
+# import keyboard
 import time
 import matplotlib.pyplot as plt
+import csv
 # import random
 # random.seed(0)
 
@@ -326,17 +327,47 @@ class Drawing:
 
         return segments
 
-    def step(self):
+    def step(self, compress=False):
         # find the longest segment in the loop
         segments = self.segments
         # print_segments(segments)
-        try:
-            # segment = segments[0]
-            segment = max(segments, key=lambda segment: len(segment["pixels"]))
-        except:
-            print("No segments")
-            return False
-        # OPTIMIZATION: if multiple segmentso of max length, pick the one that is closest to reaching an anchor
+        while True:
+            try:
+                # segment = segments[0]
+                segment = max(
+                    segments, key=lambda segment: len(segment["pixels"]))
+            except:
+                print("No segments")
+                return False
+            if compress:
+                break
+            direction = segment["direction"]
+            pixels = segment["pixels"][:]
+            target_found = False
+            failed = []
+            d = 1
+            while len(pixels) > 0:
+
+                for pixel in pixels:
+                    future = self.data[pixel.y + d *
+                                       direction[1]][pixel.x + d*direction[0]]
+                    if future.inside == True:
+                        if future.anchor:
+                            target_found = True
+                            break
+                    else:
+                        failed.append(pixel)
+                for pixel in failed:
+                    pixels.remove(pixel)
+                failed = []
+                d += 1
+            if target_found:
+                break
+            else:
+                for pixel in segment["pixels"]:
+                    pixel.segments.remove(segment)
+                segments.remove(segment)
+
         seg_ind = self.segments.index(segment)
         vect = segment["direction"]
         # after advancing the segment, the first pixel of the segment will be in new_first_loc
@@ -486,17 +517,21 @@ class Drawing:
         im = Image.fromarray(self.data)
         im.show()
 
-    def save(self, name):
+    def save(self, name, n=2):
 
-        im_data = np.ones((self.h*2 + 1, self.w*2 + 1), dtype='bool')
+        im_data = np.ones((self.h*n + 1, self.w*n + 1), dtype='bool')
 
         for pixel in self.loop:
             loc = pixel.loc
             future_loc = pixel.future.loc
             vect = (future_loc[0]-loc[0], future_loc[1]-loc[1])
 
-            im_data[1+pixel.y*2][1+pixel.x*2] = False
-            im_data[1+pixel.y*2 + vect[1]][1+pixel.x*2+vect[0]] = False
+            for i in range(n):
+                im_data[1 + pixel.y*n + vect[1]*i][1 +
+                                                   pixel.x*n + vect[0]*i] = False
+
+                # im_data[1+pixel.y*n][1+pixel.x*n] = False
+                # im_data[1+pixel.y*n + vect[1]][1+pixel.x*n+vect[0]] = False
 
         im = Image.fromarray(im_data)
         im.save(name, format='png')
@@ -577,12 +612,11 @@ def main():
     start_time = time.time()
     # im, scale = Image.open('sliver.jpg'), 10
     # im, scale = Image.open('contrast_micro.jpg'), 2
-    # im, scale = Image.open('contrast_tiny.jpg'), 1
+    im, scale = Image.open('contrast_tiny.jpg'), 1
     # im, scale = Image.open('contrast_small.jpg'), 1
     # im, scale = Image.open('contrast.jpg'), 1
     # im, scale = Image.open('dith_line_02.png'), 1
-    # im, scale = Image.open('08.png'), 1
-    im, scale = Image.open('face_contrast.jpg'), 1
+    # im, scale = Image.open('rac_small.jpg'), 1
 
     # im, scale = Image.open('dithered.png'), 1
     # im, scale = Image.open('face_tiny.jpg'), 1
@@ -591,15 +625,16 @@ def main():
     # dithered.show()
     source = np.array(dithered)
     drawing = Drawing(source)
-    # root = Tk()
-    # display = Display(root, drawing, scale=scale, ext=True)
-    # drawing.display = display
+    root = Tk()
+    display = Display(root, drawing, scale=scale, ext=True)
+    drawing.display = display
     # display.refresh()
 
-    change = drawing.step()
+    compress = True
+    change = drawing.step(compress=compress)
     while change:
         # keyboard.wait('space')
-        change = drawing.step()
+        change = drawing.step(compress=compress)
         # display.refresh()
 
         # if drawing.counter > 200:
@@ -611,10 +646,16 @@ def main():
     end_time = time.time()
     print("Time: ", int(end_time-start_time))
     print("Loop Length: ", len(drawing.loop))
-    drawing.save('test.png')
+    drawing.save('test.png', n=2)
     # display.refresh()
     # smooth(drawing.get_path())
     # root.mainloop()
+
+    data = drawing.get_path()
+    with open('path_data.csv', 'w', newline='') as f:
+        writer = csv.writer(f)
+        for pixel in data:
+            writer.writerow(pixel)
 
 
 if __name__ == '__main__':

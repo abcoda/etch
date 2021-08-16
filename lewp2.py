@@ -371,11 +371,13 @@ def print_segments(segments):
 def main():
     start_time = time.time()
     # im, scale = Image.open('sliver.jpg'), 10
-    # im, scale = Image.open('contrast_small.jpg'), 1
-    # im, scale = Image.open('contrast_tiny.jpg'), 1
-    im, scale = Image.open('face_tiny.jpg'), 1
     # im, scale = Image.open('contrast_micro.jpg'), 2
+    # im, scale = Image.open('contrast_tiny.jpg'), 1
+    # im, scale = Image.open('contrast_small.jpg'), 1
     # im = Image.open('contrast.jpg')
+    im, scale = Image.open('dithered.png'), 1
+
+    # im, scale = Image.open('face_tiny.jpg'), 1
     # im = Image.open('sargent.jpg')
 
     dithered = im.convert('1')
