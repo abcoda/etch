@@ -2,7 +2,7 @@ from tkinter import Tk, Canvas, Frame, BOTH
 from PIL import Image
 import numpy as np
 
-# import keyboard
+import keyboard
 import time
 import matplotlib.pyplot as plt
 import csv
@@ -17,26 +17,22 @@ class Display(Frame):
     Mainly for debugging purposes.
     """
 
-    def __init__(self, root, drawing, scale=1, orig=True, ext=False):
+    def __init__(self, root, drawing, scale=1, orig=True, n=2):
         super().__init__()
 
         self.root = root
         self.initUI()
         self.scale = scale
         self.drawing = drawing
+        self.n = n
+        self.offset = (2, 2)
+        self.w = self.drawing.w * self.n * \
+            self.scale + self.offset[0]*self.scale
+        self.h = self.drawing.h * self.n * \
+            self.scale + self.offset[1]*self.scale
 
-        # If ext is passed in as True, the display will also show the "extended" form of the drawing,
-        # which makes the loop effect visible (this is how the final drawings will be displayed)
-        self.ext = ext
-        if ext and orig:
-            self.root.geometry(
-                f"{self.drawing.w*2 * self.scale}x{self.drawing.h*3 * self.scale + 3*scale}+0+0")
-        elif ext:
-            self.root.geometry(
-                f"{self.drawing.w*2 * self.scale}x{self.drawing.h*2 * self.scale=}+0+0")
-        else:
-            self.root.geometry(
-                f"{self.drawing.w * self.scale}x{self.drawing.h * self.scale}+0+0")
+        self.root.geometry(
+            f"{self.w}x{self.h}+0+0")
 
     def initUI(self):
         self.master.title("Loop")
@@ -46,69 +42,58 @@ class Display(Frame):
 
     # Adds a single filled in pixel to the canvas
     def add(self, loc, color="black", width=0):
-        self.canvas.create_rectangle(loc[0] * self.scale, loc[1] * self.scale, loc[0]
-                                     * self.scale + self.scale, loc[1] * self.scale + self.scale, fill=color, width=width)
+        self.canvas.create_rectangle(loc[0] * self.scale * self.n + self.offset[0]*self.scale, loc[1] * self.scale * self.n + self.offset[1]*self.scale, loc[0]
+                                     * self.scale * self.n + self.scale + self.offset[0]*self.scale, loc[1] * self.scale * self.n + self.scale + self.offset[1]*self.scale, fill=color, width=width)
 
-    def update(self, removed_pixels, new_pixels):
+    def update(self, removed_pixels, added_pixels):
         for pixel in removed_pixels:
-            self.add(pixel.loc, color="white")
-        for pixel in new_pixels:
-            self.add(pixel.loc, color="black")
+            loc = pixel["loc"]
+            vect_future = pixel["vect_future"]
+            vect_past = pixel["vect_past"]
+            for i in range(self.n):
+                self.add((loc[0] + vect_future[0]*i/self.n, loc[1] +
+                          vect_future[1]*i/self.n), color="white")
+                self.add((loc[0] - vect_past[0]*i/self.n, loc[1] -
+                          vect_past[1]*i/self.n), color="white")
+        for pixel in added_pixels:
+            loc = pixel["loc"]
+            vect_future = pixel["vect_future"]
+            vect_past = pixel["vect_past"]
+            for i in range(self.n):
+                self.add((loc[0] + vect_future[0]*i/self.n, loc[1] +
+                          vect_future[1]*i/self.n), color="black")
+                self.add((loc[0] - vect_past[0]*i/self.n, loc[1] -
+                          vect_past[1]*i/self.n), color="black")
 
-        self.root.update()
+        # self.root.update()
         return True
 
-    def refresh(self):
+    def load(self):
         # Updates the canvas with the current state of the drawing
 
-        self.canvas.delete('all')
+        self.canvas.create_rectangle(0, 0, self.w, self.h, fill='white')
         for row in range(self.drawing.h):
             for col in range(self.drawing.w):
                 # Fill in pixels with different colors depending on the status of the pixel
                 pixel = self.drawing.data[row][col]
                 loc = (col, row)
-                if pixel.anchor:
-                    self.add(loc, color='red')
-                elif pixel.inside == None:
+                if pixel.inside == None:
+                    future_loc = pixel.future.loc
+                    vect = (future_loc[0] - loc[0], future_loc[1] - loc[1])
+                    for i in range(self.n):
+                        self.add((loc[0] + vect[0]*i/self.n,
+                                  loc[1] + vect[1]*i/self.n), color="black")
                     self.add(loc, color='black')
-                elif pixel.inside:
-                    self.add(loc, color='blue')
-                elif pixel.inside == False:
-                    self.add(loc, color='green')
-                elif col % 2 == row % 2:
-                    self.add(loc, color='#ddd')
-                else:
-                    self.add(loc, color='white')
-        # If applicable, draw the extended form of the drawing below the original
-        if self.ext:
-            offset = self.drawing.h + 2
-            for pixel in self.drawing.loop:
-                loc = pixel.loc
-                future_loc = pixel.future.loc
-                vect = (future_loc[0]-loc[0], future_loc[1]-loc[1])
-                middle_loc = (loc[0] + vect[0]/2, loc[1] + vect[1]/2)
-                loc = (loc[0] * 2, loc[1] * 2 + offset)
-                middle_loc = (middle_loc[0] * 2, middle_loc[1] * 2 + offset)
-
-                self.add(loc, color='black')
-                self.add(middle_loc)
-            for row in range(0, self.drawing.h):
-                for col in range(0, self.drawing.w):
-                    pixel = self.drawing.data[row][col]
-                    loc = (col*2, row*2 + offset)
-                    if pixel.anchor:
-                        self.add(loc, color='red')
-                    # elif pixel.inside == None:
-                    #     self.add(loc, color='black')
-                    # elif pixel.inside:
-                    #     self.add(loc, color='blue')
-                    # elif pixel.inside == False:
-                    #     self.add(loc, color='green')
-                    # elif col % 2 == row % 2:
-                    #     self.add(loc, color='#ddd')
-                    # else:
-                    #     self.add(loc, color='white')
-
+                # if pixel.anchor:
+                #     self.add(loc, color='red')
+                # elif pixel.inside:
+                    # self.add(loc, color='blue')
+                # elif pixel.inside == False:
+                    # self.add(loc, color='green')
+                # elif col % 2 == row % 2:
+                    # self.add(loc, color='#ddd')
+                # else:
+                #     self.add(loc, color='#eee')
         self.root.update()
         return True
 
@@ -414,7 +399,17 @@ class Drawing:
         self.data[new_first.y][new_first.x].inside = None
         self.loop.append(new_first)
         first.segments.remove(segment)
-        new_pixels = [new_first]
+        new_pixels = [new_first, first]
+
+        removed_pixels = []
+        for pixel in segment["pixels"]:
+            loc = pixel.loc
+            future_loc = pixel.future.loc
+            past_loc = pixel.past.loc
+            future_direction = (future_loc[0] - loc[0], future_loc[1] - loc[1])
+            past_direction = (loc[0] - past_loc[0], loc[1] - past_loc[1])
+            removed_pixels.append(
+                {"loc": loc, "vect_future": future_direction, "vect_past": past_direction})
 
         # for all of the pixels in between the first and last,
         #    just advance them towards the inside without changing past or future
@@ -440,7 +435,6 @@ class Drawing:
                                     vect[1]][new_pixel.x + vect[0]]
             if one_further.inside == None:
                 flagged.append(one_further)
-        removed_pixels = segment["pixels"][1:-1]
 
         last = segment["pixels"][-1]
         new_last = self.data[last.loc[1] + vect[1]][last.loc[0] + vect[0]]
@@ -452,6 +446,7 @@ class Drawing:
         self.loop.append(new_last)
         last.segments.remove(segment)
         new_pixels.append(new_last)
+        new_pixels.append(last)
 
         # remove the current segment (it's details are no longer accurate)
         self.segments.remove(segment)
@@ -538,7 +533,18 @@ class Drawing:
         new_segments = self.traverse(start=start, stop=stop)
         for seg in new_segments:
             self.segments.insert(first_ind, seg)
-        return removed_pixels, new_pixels
+
+        added_pixels = []
+        for pixel in new_pixels:
+            loc = pixel.loc
+            future_loc = pixel.future.loc
+            past_loc = pixel.past.loc
+            future_direction = (future_loc[0] - loc[0], future_loc[1] - loc[1])
+            past_direction = (loc[0] - past_loc[0], loc[1] - past_loc[1])
+            added_pixels.append(
+                {"loc": loc, "vect_future": future_direction, "vect_past": past_direction})
+
+        return removed_pixels, added_pixels
 
     # simply checks whether an (x,y) location is within the bounds of the drawing
     def is_valid_loc(self, loc):
@@ -580,55 +586,6 @@ class Drawing:
 
         im = Image.fromarray(im_data)
         im.save(name, format='png')
-
-    def get_arduino_xy(self, n=2):
-        # path = []
-        pixel = self.loop[0]
-        path = ""
-        # counter = 0
-        while True:
-            loc = pixel.loc
-            future_loc = pixel.future.loc
-            vect = (future_loc[0]-loc[0], future_loc[1]-loc[1])
-            if vect[0] == 1:
-                path += '00'
-            elif vect[0] == -1:
-                path += '01'
-            elif vect[1] == 1:
-                path += '10'
-            elif vect[1] == -1:
-                path += '11'
-            # else:
-            #     path += '0'
-            # x_path += f"{vect[0]*90 + 90}, "
-            # y_path += f"{vect[1]*-90 + 90}, "
-
-            # for i in range(n):
-            # path.append((pixel.x*n + vect[0]*i, pixel.y*n + vect[1]*i))
-
-            pixel = pixel.future
-            if pixel is self.loop[0]:
-                break
-        # x_path = x_path[:-2]
-        # y_path = y_path[:-2]
-
-        # return x_path, y_path
-        return path
-
-    def get_path(self, n=2):
-        path = []
-        pixel = self.loop[0]
-        while True:
-            loc = pixel.loc
-            future_loc = pixel.future.loc
-            vect = (future_loc[0]-loc[0], future_loc[1]-loc[1])
-            for i in range(n):
-                path.append((pixel.x*n + vect[0]*i, pixel.y*n + vect[1]*i))
-            pixel = pixel.future
-            if pixel is self.loop[0]:
-                break
-
-        return path
 
 
 def print_segments(segments):
@@ -684,30 +641,30 @@ def loop(im, show=False, scale=1, compress=True, timer=True, filename='latest.pn
     drawing = Drawing(source)
     if show:
         root = Tk()
-        display = Display(root, drawing, scale=scale, ext=True)
+        display = Display(root, drawing, scale=scale, n=n)
         drawing.display = display
-        display.refresh()
+        display.load()
 
-    removed_pixels, new_pixels = drawing.step(compress=compress)
-    while new_pixels:
-        # keyboard.wait('space')
-        removed_pixels, new_pixels = drawing.step(compress=compress)
-
+    removed_pixels, added_pixels = drawing.step(compress=compress)
+    while added_pixels:
         if show:
-            # if drawing.counter > 200:
-            # drawing.counter = 0
-            display.update(removed_pixels, new_pixels)
-            # else:
-            # drawing.counter += 1
+            display.update(removed_pixels, added_pixels)
+
+            if drawing.counter > 50:
+                drawing.counter = 0
+                display.root.update()
+
+            else:
+                drawing.counter += 1
+
+        removed_pixels, added_pixels = drawing.step(compress=compress)
 
     end_time = time.time()
     if timer:
         print("Time: ", int(end_time-start_time))
         print("Loop Length: ", len(drawing.loop))
-    if filename:
-        drawing.save(filename, n=n)
+    drawing.save(filename, n=n)
     if show:
-        display.refresh()
         root.mainloop()
 
 
@@ -715,27 +672,15 @@ def main():
     # im, scale = Image.open('images/sliver.jpg'), 10
     # im, scale = Image.open('images/contrast_micro.jpg'), 2
     # im, scale = Image.open('images/contrast_tiny.jpg'), 1
-    # im, scale = Image.open('images/contrast_small.jpg'), 1
+    im, scale = Image.open('images/contrast_small.jpg'), 1
     # im, scale = Image.open('images/contrast.jpg'), 1
     # im, scale = Image.open('images/dith_line_02.png'), 1
-    im, scale = Image.open('images/rac_small.jpg'), 1
+    # im, scale = Image.open('images/rac_small.jpg'), 1
     # im, scale = Image.open('images/dithered.png'), 1
     # im, scale = Image.open('images/face_tiny.jpg'), 1
     # im, scale = Image.open('images/kramer_edited.jpg'), 1
     # im, scale = Image.open('images/sargent_0.jpg'), 1
-    loop(im, scale=scale, show=False)
-
-    # path = drawing.get_arduino_xy(n=1)
-    # with open('arduino_path.txt', 'w') as f:
-    #     f.write(path)
-    # with open('y_data.txt', 'w') as f:
-    #     f.write(y_data)
-
-    # data = drawing.get_path(n=2)
-    # with open('path_data.csv', 'w', newline='') as f:
-    #     writer = csv.writer(f)
-    #     for pixel in data:
-    #         writer.writerow(pixel)
+    loop(im, scale=scale, compress=True, show=False, n=3)
 
 
 if __name__ == '__main__':

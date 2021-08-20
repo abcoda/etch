@@ -1,6 +1,7 @@
 from PIL import Image
 import csv
 import numpy as np
+from get_path import get_path
 
 
 def get_arduino_path(im, n=2):
@@ -14,34 +15,36 @@ def get_arduino_path(im, n=2):
                 break
         if x:
             break
-    path = []
+    path = ""
+    start = (x, y)
     direct = 0
     while True:
         if not data[y][x+1] and direct != 1:
             x += 1
             direct = 3
+            path += '00'
         elif not data[y+1][x] and direct != 2:
             y += 1
             direct = 4
+            path += '10'
         elif not data[y][x-1] and direct != 3:
             x -= 1
             direct = 1
+            path += '01'
         elif not data[y-1][x] and direct != 4:
             y -= 1
             direct = 2
-        path.append((x, y))
-        if (x, y) == path[0]:
+            path += '11'
+        if (x, y) == start:
             break
     return path
 
 
 def main():
     im = Image.open('latest.png')
-    path = get_path(im, n=2)
-    with open('path_data.csv', 'w', newline='') as f:
-        writer = csv.writer(f)
-        for pixel in path:
-            writer.writerow(pixel)
+    path = get_arduino_path(im)
+    with open('arduino_path.txt', 'w') as f:
+        f.write(path)
 
 
 if __name__ == '__main__':

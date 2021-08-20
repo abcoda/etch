@@ -1,5 +1,7 @@
 from tkinter import Tk, Canvas, Frame, BOTH
 import csv
+from PIL import Image
+from get_path import get_path
 
 
 class Display(Frame):
@@ -25,22 +27,24 @@ class Display(Frame):
                                      * self.scale + self.scale, loc[1] * self.scale + self.scale, fill=color, width=width)
 
 
-def main():
+def animate(im='latest.png'):
+    im = Image.open(im)
     root = Tk()
-    w = 829
-    h = 467
+    w, h = im.size
     display = Display(root, (w, h), scale=1)
-    with open('path_data.csv', newline='') as csvfile:
-        reader = csv.reader(csvfile)
-        counter = 0
-        for row in reader:
-            loc = (int(row[0]), int(row[1]))
-            display.add(loc)
-            counter += 1
-            if counter > 50:
-                root.update()
-                counter = 0
+    path = get_path(im)
+    counter = 0
+    for loc in path:
+        display.add(loc)
+        counter += 1
+        if counter > 50:
+            root.update()
+            counter = 0
     root.mainloop()
+
+
+def main():
+    animate()
 
 
 if __name__ == '__main__':
