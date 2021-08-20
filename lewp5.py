@@ -1,23 +1,23 @@
 from tkinter import Tk, Canvas, Frame, BOTH
 from PIL import Image
 import numpy as np
+
 # import keyboard
 import time
 import matplotlib.pyplot as plt
 import csv
-# import random
+import random
 # random.seed(0)
-
-"""
-Display: Class for a UI Window which displays the drawing in its current state.
-Each display object is linked to a drawing.
-Mainly for debugging purposes.
-"""
 
 
 class Display(Frame):
+    """
+    Display: Class for a UI Window which displays the drawing in its current state.
+    Each display object is linked to a drawing.
+    Mainly for debugging purposes.
+    """
 
-    def __init__(self, root, drawing, scale=1, ext=False):
+    def __init__(self, root, drawing, scale=1, orig=True, ext=False):
         super().__init__()
 
         self.root = root
@@ -28,10 +28,12 @@ class Display(Frame):
         # If ext is passed in as True, the display will also show the "extended" form of the drawing,
         # which makes the loop effect visible (this is how the final drawings will be displayed)
         self.ext = ext
-        if ext:
+        if ext and orig:
             self.root.geometry(
                 f"{self.drawing.w*2 * self.scale}x{self.drawing.h*3 * self.scale + 3*scale}+0+0")
-
+        elif ext:
+            self.root.geometry(
+                f"{self.drawing.w*2 * self.scale}x{self.drawing.h*2 * self.scale=}+0+0")
         else:
             self.root.geometry(
                 f"{self.drawing.w * self.scale}x{self.drawing.h * self.scale}+0+0")
@@ -47,8 +49,18 @@ class Display(Frame):
         self.canvas.create_rectangle(loc[0] * self.scale, loc[1] * self.scale, loc[0]
                                      * self.scale + self.scale, loc[1] * self.scale + self.scale, fill=color, width=width)
 
-    # Updates the canvas with the current state of the drawing
+    def update(self, removed_pixels, new_pixels):
+        for pixel in removed_pixels:
+            self.add(pixel.loc, color="white")
+        for pixel in new_pixels:
+            self.add(pixel.loc, color="black")
+
+        self.root.update()
+        return True
+
     def refresh(self):
+        # Updates the canvas with the current state of the drawing
+
         self.canvas.delete('all')
         for row in range(self.drawing.h):
             for col in range(self.drawing.w):
@@ -101,23 +113,22 @@ class Display(Frame):
         return True
 
 
-"""
-The Pixel object holds the data for a single pixel in the drawing.
-    - loc: The (x,y) coordinates of the pixel
-    - past: The Pixel object that precedes the current Pixel in the loop (if the pixel is part of the loop)
-    - future: The Pixel that comes after the current Pixel (if the current pixel is part of the loop)
-    - inside: Denotes whether the Pixel is 
-        True: inside of the loop
-        False: outside of the loop
-        None: part of the loop
-    - anchor (bool): Denotes whether the Pixel is an anchor point of the drawing (one of the original pixels in the image)
-    - segments: a list of all line segments that the Pixel is a part of 
-        segments start and stop at corners, anchor points, or any position that cannot be advanced
-        due to another segment blocking it (see the "step" and "traverse" functions)
-"""
-
-
 class Pixel:
+    """
+    The Pixel object holds the data for a single pixel in the drawing.
+        - loc: The (x,y) coordinates of the pixel
+        - past: The Pixel object that precedes the current Pixel in the loop (if the pixel is part of the loop)
+        - future: The Pixel that comes after the current Pixel (if the current pixel is part of the loop)
+        - inside: Denotes whether the Pixel is 
+            True: inside of the loop
+            False: outside of the loop
+            None: part of the loop
+        - anchor (bool): Denotes whether the Pixel is an anchor point of the drawing (one of the original pixels in the image)
+        - segments: a list of all line segments that the Pixel is a part of 
+            segments start and stop at corners, anchor points, or any position that cannot be advanced
+            due to another segment blocking it (see the "step" and "traverse" functions)
+    """
+
     def __init__(self, loc, past=None, future=None, inside=None, anchor=None):
         self.loc = loc
         self.past = past
@@ -138,15 +149,14 @@ class Pixel:
         return f"({self.x}, {self.y})"
 
 
-"""Represents the Entire Drawing, including all of the pixel data, loop data, 
-        and list of segments in the loop
-    The source passed in to the drawing is a numpy array of 1's and 0's 
-        coming from a strictly black and white image (see main)
-    
-"""
-
-
 class Drawing:
+    """
+    Represents the Entire Drawing, including all of the pixel data, loop data, 
+    and list of segments in the loop
+    The source passed in to the drawing is a numpy array of 1's and 0's 
+    coming from a strictly black and white image (see main)
+    """
+
     def __init__(self, source, display=None):
         # counter counts the number of iterations of the step function, for debugging or animation purposes
         self.counter = 0
@@ -200,7 +210,6 @@ class Drawing:
                 self.data[j][i].inside = True
 
         # the loop list holds references to all of the pixels that are currently part of the loop
-        #
         loop = []
         pixel = self.data[0][0]
         while True:
@@ -209,52 +218,55 @@ class Drawing:
             if pixel == loop[0]:
                 break
         self.loop = loop
+
+        # get the initial segments of the loop by traversing the entire loop
         self.segments = self.traverse()
 
-    def get_direction(self, pixel, vertical, vector=False):
+    def get_direction(self, pixel, vertical):
+        """Given a pixel's coordinates (x,y) and the orientation of the containing segment,
+        get a vector of the direction towards the inside of the loop.
+        Returns None if none of the neighboring pixels are inside (corners)"""
         x, y = pixel.loc
-        # handle convex corners?
+        # if the segment is vertical, just look left and right of the pixel
         if vertical:
             try:
                 if self.data[y][x + 1].inside:
-                    if vector:
-                        return (1, 0)
-                    return True
+                    return (1, 0)
             except:
                 pass
             try:
                 if self.data[y][x-1].inside:
-                    if vector:
-                        return (-1, 0)
-                    return False
+                    return (-1, 0)
             except:
                 pass
+        # if the segment is horizontal, just look above and below the pixel
         else:
             try:
                 if self.data[y-1][x].inside:
-                    if vector:
-                        return (0, -1)
-                    return True
+                    return (0, -1)
             except:
                 pass
             try:
                 if self.data[y+1][x].inside:
-                    if vector:
-                        return (0, 1)
-                    return False
+                    return (0, 1)
             except:
                 pass
         return None
 
     def traverse(self, start=False, stop=False):
         """
-        OPTIMIZATIONS:
-        if there are no anchors that can be reached by the segment, dont include it (advancing it will add unnecessary length to loop)
-
+        Traverse a portion of the loop (or entire loop if no start or finish are supplied), 
+        determining the segments that make up the traversed section.
+        Only valid segments are recorded (single pixel segments do not count, and a segment must
+        be able to be advanced by at least one pixel without hitting any other pixels)
         """
+        # if no start is given, start at the first pixel in the loop list (arbitrary)
         if not start:
             start = self.loop[0]
-        head = start
+        head = start  # 'head' is the current pixel at any time as the loop is traversed
+        # Anchor points are part of two segments so must be considered twice while traversing.
+        # anchor_flag denotes whether the anchor has already been considered once
+        # If the first pixel is an anchor, only consider it once (until the end)
         if start.anchor:
             anchor_flag = True
         else:
@@ -262,40 +274,41 @@ class Drawing:
         if not stop:
             stop = start
             full_loop = True
-            # stop_flag = False
         else:
             full_loop = False
             stop = stop.future
-            # stop_flag = True
         stop_flag = False
 
         segments = []
         while True:
-            # if head is stop:
             if stop_flag:
                 break
-            # stop_flag = True
 
             vertical = head.future.x == head.x
-            direction = self.get_direction(head, vertical, vector=True)
+            direction = self.get_direction(head, vertical)
             pixels = []
             while True:
+                # add the current pixel to the segment if there is an empty inside neighbor
                 if self.get_direction(head, vertical) is not None:
                     pixels.append(head)
+                    # if we are at an anchor or a corner
                     if head.anchor or (head.future.x == head.x) != vertical:
                         if anchor_flag:
                             anchor_flag = False
+                        # if this is the first time at the anchor, end the segment here and start a new one
                         else:
                             anchor_flag = True
                             break
                     else:
                         anchor_flag = False
+                    # advance the head, and if we're at the stopping point, end the traversal
+                    # unless the whole loop is being traversed, then finish the current segment first
                     head = head.future
                     if head is stop:
                         stop_flag = True
                         if not full_loop:
                             break
-
+                # if the pixel is NOT valid, end the segment and advance (unless we are at an anchor for the first time)
                 else:
                     if head.anchor or (head.future.x == head.x) != vertical:
                         if anchor_flag:
@@ -307,47 +320,62 @@ class Drawing:
                         else:
                             anchor_flag = True
                             break
-                    # if head == stop and stop_flag:
-                        # break
                     head = head.future
                     if head is stop:
                         stop_flag = True
                     break
 
+            # if the segment is longer than one pixel, add it to the list of segments
             if len(pixels) > 1:
                 segment = {
                     "pixels": pixels,
                     "vertical": vertical,
                     "direction": direction
                 }
+                # for each pixel in the segment, add the segment to the pixels interal list of its own segments
                 segments.append(segment)
                 for pixel in pixels:
                     if segment not in pixel.segments:
                         pixel.segments.append(segment)
 
+        # this function only returns the segments, but relies on the calling function to delete the
+        # old segments for this section of the loop
         return segments
 
     def step(self, compress=False):
-        # find the longest segment in the loop
         segments = self.segments
-        # print_segments(segments)
+        # select a segment to step forward
         while True:
             try:
-                # segment = segments[0]
+                # first find the longest segment (or one of the longest segments)
                 segment = max(
                     segments, key=lambda segment: len(segment["pixels"]))
+
+                # if there are multiple segments with the max length, we can randomly choose one to make
+                # the final product less orderly looking. Comment these lines out for a different look
+                length = len(segment["pixels"])
+                choices = [segment for segment in segments if len(
+                    segment["pixels"]) == length]
+                segment = random.choice(choices)
+            # if there are no available segments to move, the drawing is complete
             except:
                 print("No segments")
-                return False
+                return False, False
+            # if the compress parameter is true, the loop closes in on itself as much as possible, even
+            # when unnecessary for reaching anchor points
             if compress:
                 break
+            # if we don't want to compress the loop, we should only select segments that can actually
+            # reach anchor points when stepped in the given direction
             direction = segment["direction"]
             pixels = segment["pixels"][:]
             target_found = False
             failed = []
+            # keep looking one row/column into the future until we reach an anchor or an obstacle
+            # if we do encounter an obstacle, just remove the offending pixel and keep checking,
+            # becuase it could still be possible to reach an anchor with a sub-segment
             d = 1
             while len(pixels) > 0:
-
                 for pixel in pixels:
                     future = self.data[pixel.y + d *
                                        direction[1]][pixel.x + d*direction[0]]
@@ -361,16 +389,24 @@ class Drawing:
                     pixels.remove(pixel)
                 failed = []
                 d += 1
+            # if there is a reachable anchor point, continue with the current segment
             if target_found:
                 break
+            # if no anchors can be reached by the segment, delete the segment and try another one
             else:
                 for pixel in segment["pixels"]:
                     pixel.segments.remove(segment)
                 segments.remove(segment)
 
+        # save the index of the selected segment for future reference
         seg_ind = self.segments.index(segment)
         vect = segment["direction"]
+
         # after advancing the segment, the first pixel of the segment will be in new_first_loc
+        #       =x=====x=     ->   =x     x=
+        #                           =======
+
+        # reassign past and future references
         first = segment["pixels"][0]
         new_first = self.data[first.loc[1] + vect[1]][first.loc[0] + vect[0]]
         new_first.past = first
@@ -378,15 +414,18 @@ class Drawing:
         self.data[new_first.y][new_first.x].inside = None
         self.loop.append(new_first)
         first.segments.remove(segment)
-        # for seg in first.segments:
-        #     redo_segments.append(seg)
+        new_pixels = [new_first]
 
-        # for all of the pixels in between the first and last, just advance them towards the inside without changing past or future
+        # for all of the pixels in between the first and last,
+        #    just advance them towards the inside without changing past or future
+        # 'flagged' is a list of any pixels whose segments might be affected by the current step
+        #     (moveing one segment forward could block a completely different segment from progressing)
         flagged = []
         past = new_first
         for pixel in segment["pixels"][1:-1]:
             new_pixel = self.data[pixel.loc[1] +
                                   vect[1]][pixel.loc[0] + vect[0]]
+            new_pixels.append(new_pixel)
             new_pixel.past = past
             new_pixel.past.future = new_pixel
             new_pixel.inside = None
@@ -401,6 +440,7 @@ class Drawing:
                                     vect[1]][new_pixel.x + vect[0]]
             if one_further.inside == None:
                 flagged.append(one_further)
+        removed_pixels = segment["pixels"][1:-1]
 
         last = segment["pixels"][-1]
         new_last = self.data[last.loc[1] + vect[1]][last.loc[0] + vect[0]]
@@ -411,13 +451,15 @@ class Drawing:
         self.data[new_last.y][new_last.x].inside = None
         self.loop.append(new_last)
         last.segments.remove(segment)
-        # for seg in last.segments:
-        #     redo_segments.append(seg)
+        new_pixels.append(new_last)
 
-        # new_segment = self.traverse(start=new_first,stop=new_last)
-        # self.display.refresh()
+        # remove the current segment (it's details are no longer accurate)
         self.segments.remove(segment)
 
+        # check the four pixels that are against the new corners
+        #      ===      ===
+        #       x|=====|x
+        #        x    x
         if segment["vertical"]:
             if segment["direction"][0] == 1:
                 side1 = self.data[new_last.y - 1][new_last.x]
@@ -449,22 +491,28 @@ class Drawing:
         if side4.inside == None:
             flagged.append(side4)
 
+        # go through all the flagged pixels and get all segments that they are a part of
         redo_segments = []
         for pixel in flagged:
             for seg in pixel.segments:
                 if seg not in redo_segments:
                     redo_segments.append(seg)
+        # for each segment, remove it from its pixels internal list (it needs to be updated now)
         for seg in redo_segments:
             for pixel in seg["pixels"]:
                 pixel.segments.remove(seg)
             ind = self.segments.index(seg)
             self.segments.remove(seg)
+            # get the updated segments by traversing over the original segments' start to finish
             new_segs = self.traverse(
                 start=seg["pixels"][0], stop=seg["pixels"][-1])
+            # add the updated segment(s) the the master list of segements
+            # by inserting at the same index, the loop progresses  in a more systematic way (for animation)
             for new_seg in new_segs:
                 self.segments.insert(ind, new_seg)
-            # self.segments.extend(new_segs)
 
+        # if the first pixel was part of another segment, that segment could have been affected as well,
+        # so we need to traverse that segment as well
         if len(first.segments) > 0:
             seg = first.segments[0]
             first_ind = self.segments.index(seg)
@@ -476,7 +524,7 @@ class Drawing:
             start = first
             first_ind = seg_ind
 
-        # stop = False
+        # similarly, if the last pixel is part of another segment, traverse that one as well
         if len(last.segments) > 0:
             seg = last.segments[0]
             self.segments.remove(seg)
@@ -486,19 +534,18 @@ class Drawing:
         else:
             stop = last
 
-        if start and stop:
-            new_segments = self.traverse(start=start, stop=stop)
-        # self.display.refresh()
+        # traverse the new segment, including the previous and following segments if needed
+        new_segments = self.traverse(start=start, stop=stop)
         for seg in new_segments:
             self.segments.insert(first_ind, seg)
-        # self.segments.extend(new_segments)
-        # print_segments(self.segments)
-        return True
+        return removed_pixels, new_pixels
 
+    # simply checks whether an (x,y) location is within the bounds of the drawing
     def is_valid_loc(self, loc):
         x, y = loc
         return x >= 0 and y >= 0 and x < self.w and y < self.h
 
+    # returns a list of (x,y) coordinates of a pixel's neighbors (only ones that are valid locations)
     def get_neighbors(self, loc):
         x, y = loc
 
@@ -513,58 +560,80 @@ class Drawing:
             neighbor for neighbor in neighbors if self.is_valid_loc(neighbor)]
         return valid
 
-    def show(self):
-        im = Image.fromarray(self.data)
-        im.show()
-
     def save(self, name, n=2):
+        # save the drawing as an image file
+        # n sets the expansion factor (n of at least 2 must be used to visibly see the loop)
 
-        im_data = np.ones((self.h*n + 1, self.w*n + 1), dtype='bool')
+        # offset everything down and to the right by one pixel (so the loop is centered)
+        im_data = np.ones((self.h*n + 1, self.w*n + 1),
+                          dtype='bool')  # initially all white
 
         for pixel in self.loop:
+            # determine the direction of the next pixel, so that the gaps can be filled in properly
             loc = pixel.loc
             future_loc = pixel.future.loc
             vect = (future_loc[0]-loc[0], future_loc[1]-loc[1])
 
             for i in range(n):
                 im_data[1 + pixel.y*n + vect[1]*i][1 +
-                                                   pixel.x*n + vect[0]*i] = False
-
-                # im_data[1+pixel.y*n][1+pixel.x*n] = False
-                # im_data[1+pixel.y*n + vect[1]][1+pixel.x*n+vect[0]] = False
+                                                   pixel.x*n + vect[0]*i] = False  # False <=> Black
 
         im = Image.fromarray(im_data)
         im.save(name, format='png')
 
-    def get_path(self):
-        path = []
+    def get_arduino_xy(self, n=2):
+        # path = []
         pixel = self.loop[0]
+        path = ""
+        # counter = 0
         while True:
-            path.append(pixel.loc)
+            loc = pixel.loc
+            future_loc = pixel.future.loc
+            vect = (future_loc[0]-loc[0], future_loc[1]-loc[1])
+            if vect[0] == 1:
+                path += '00'
+            elif vect[0] == -1:
+                path += '01'
+            elif vect[1] == 1:
+                path += '10'
+            elif vect[1] == -1:
+                path += '11'
+            # else:
+            #     path += '0'
+            # x_path += f"{vect[0]*90 + 90}, "
+            # y_path += f"{vect[1]*-90 + 90}, "
+
+            # for i in range(n):
+            # path.append((pixel.x*n + vect[0]*i, pixel.y*n + vect[1]*i))
+
             pixel = pixel.future
             if pixel is self.loop[0]:
                 break
+        # x_path = x_path[:-2]
+        # y_path = y_path[:-2]
+
+        # return x_path, y_path
+        return path
+
+    def get_path(self, n=2):
+        path = []
+        pixel = self.loop[0]
+        while True:
+            loc = pixel.loc
+            future_loc = pixel.future.loc
+            vect = (future_loc[0]-loc[0], future_loc[1]-loc[1])
+            for i in range(n):
+                path.append((pixel.x*n + vect[0]*i, pixel.y*n + vect[1]*i))
+            pixel = pixel.future
+            if pixel is self.loop[0]:
+                break
+
         return path
 
 
-def smooth(path):
-    x = [loc[0] for loc in path]
-    y = [loc[1] for loc in path]
-    t = [n*10 for n in range(len(path))]
-
-    x_t = np.poly1d(np.polyfit(t, x, 50))
-    y_t = np.poly1d(np.polyfit(t, y, 50))
-
-    x_smooth = [x_t(t) for t in t]
-    y_smooth = [-1*y_t(t) for t in t]
-
-    # plt.plot(t, x)
-    # plt.plot(t, x_smooth)
-    plt.plot(x_smooth, y_smooth)
-    plt.show()
-
-
 def print_segments(segments):
+    # print out a list of segments (for debugging)
+    # groups segments by orientation and direction
     current = False
     for i in range(4):
         for segment in segments:
@@ -608,54 +677,65 @@ def print_segments(segments):
     print('')
 
 
-def main():
+def loop(im, show=False, scale=1, compress=True, timer=True, filename='latest.png', n=2):
     start_time = time.time()
-    # im, scale = Image.open('sliver.jpg'), 10
-    # im, scale = Image.open('contrast_micro.jpg'), 2
-    im, scale = Image.open('contrast_tiny.jpg'), 1
-    # im, scale = Image.open('contrast_small.jpg'), 1
-    # im, scale = Image.open('contrast.jpg'), 1
-    # im, scale = Image.open('dith_line_02.png'), 1
-    # im, scale = Image.open('rac_small.jpg'), 1
-
-    # im, scale = Image.open('dithered.png'), 1
-    # im, scale = Image.open('face_tiny.jpg'), 1
-
     dithered = im.convert('1')
-    # dithered.show()
     source = np.array(dithered)
     drawing = Drawing(source)
-    root = Tk()
-    display = Display(root, drawing, scale=scale, ext=True)
-    drawing.display = display
-    # display.refresh()
+    if show:
+        root = Tk()
+        display = Display(root, drawing, scale=scale, ext=True)
+        drawing.display = display
+        display.refresh()
 
-    compress = True
-    change = drawing.step(compress=compress)
-    while change:
+    removed_pixels, new_pixels = drawing.step(compress=compress)
+    while new_pixels:
         # keyboard.wait('space')
-        change = drawing.step(compress=compress)
-        # display.refresh()
+        removed_pixels, new_pixels = drawing.step(compress=compress)
 
-        # if drawing.counter > 200:
-        #     drawing.counter = 0
-        #     display.refresh()
-        # else:
-        #     drawing.counter += 1
+        if show:
+            # if drawing.counter > 200:
+            # drawing.counter = 0
+            display.update(removed_pixels, new_pixels)
+            # else:
+            # drawing.counter += 1
 
     end_time = time.time()
-    print("Time: ", int(end_time-start_time))
-    print("Loop Length: ", len(drawing.loop))
-    drawing.save('test.png', n=2)
-    # display.refresh()
-    # smooth(drawing.get_path())
-    # root.mainloop()
+    if timer:
+        print("Time: ", int(end_time-start_time))
+        print("Loop Length: ", len(drawing.loop))
+    if filename:
+        drawing.save(filename, n=n)
+    if show:
+        display.refresh()
+        root.mainloop()
 
-    data = drawing.get_path()
-    with open('path_data.csv', 'w', newline='') as f:
-        writer = csv.writer(f)
-        for pixel in data:
-            writer.writerow(pixel)
+
+def main():
+    # im, scale = Image.open('images/sliver.jpg'), 10
+    # im, scale = Image.open('images/contrast_micro.jpg'), 2
+    # im, scale = Image.open('images/contrast_tiny.jpg'), 1
+    # im, scale = Image.open('images/contrast_small.jpg'), 1
+    # im, scale = Image.open('images/contrast.jpg'), 1
+    # im, scale = Image.open('images/dith_line_02.png'), 1
+    im, scale = Image.open('images/rac_small.jpg'), 1
+    # im, scale = Image.open('images/dithered.png'), 1
+    # im, scale = Image.open('images/face_tiny.jpg'), 1
+    # im, scale = Image.open('images/kramer_edited.jpg'), 1
+    # im, scale = Image.open('images/sargent_0.jpg'), 1
+    loop(im, scale=scale, show=False)
+
+    # path = drawing.get_arduino_xy(n=1)
+    # with open('arduino_path.txt', 'w') as f:
+    #     f.write(path)
+    # with open('y_data.txt', 'w') as f:
+    #     f.write(y_data)
+
+    # data = drawing.get_path(n=2)
+    # with open('path_data.csv', 'w', newline='') as f:
+    #     writer = csv.writer(f)
+    #     for pixel in data:
+    #         writer.writerow(pixel)
 
 
 if __name__ == '__main__':

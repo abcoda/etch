@@ -482,10 +482,6 @@ class Drawing:
             neighbor for neighbor in neighbors if self.is_valid_loc(neighbor)]
         return valid
 
-    def show(self):
-        im = Image.fromarray(self.data)
-        im.show()
-
     def save(self, name):
 
         im_data = np.ones((self.h*2 + 1, self.w*2 + 1), dtype='bool')
@@ -582,13 +578,12 @@ def main():
     # im, scale = Image.open('contrast.jpg'), 1
     # im, scale = Image.open('dith_line_02.png'), 1
     # im, scale = Image.open('08.png'), 1
-    im, scale = Image.open('face_contrast.jpg'), 1
+    im, scale = Image.open('rac_small.jpg'), 1
 
     # im, scale = Image.open('dithered.png'), 1
     # im, scale = Image.open('face_tiny.jpg'), 1
 
     dithered = im.convert('1')
-    # dithered.show()
     source = np.array(dithered)
     drawing = Drawing(source)
     # root = Tk()

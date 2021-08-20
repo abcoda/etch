@@ -3,9 +3,8 @@ from PIL import Image
 import numpy as np
 import random
 import keyboard
-import time
 
-random.seed(0)
+# random.seed(0)
 
 
 class Display(Frame):
@@ -43,8 +42,10 @@ class Display(Frame):
             for col in range(self.drawing.w):
                 pixel = self.drawing.data[row][col]
                 loc = (col, row)
-                if pixel.anchor:
-                    self.add(loc, color='red')
+                if False:
+                    pass
+                # elif pixel.anchor:
+                    # self.add(loc, color='red')
                 elif pixel.inside == None:
                     self.add(loc, color='black')
                 elif pixel.inside:
@@ -53,8 +54,8 @@ class Display(Frame):
                     self.add(loc, color='green')
                 elif col % 2 == row % 2:
                     self.add(loc, color='#ddd')
-                else:
-                    self.add(loc, color='white')
+                # else:
+                    # self.add(loc, color='black')
         if self.ext:
             offset = self.drawing.h + 2
             for pixel in self.drawing.loop:
@@ -71,8 +72,10 @@ class Display(Frame):
                 for col in range(0, self.drawing.w):
                     pixel = self.drawing.data[row][col]
                     loc = (col*2, row*2 + offset)
+                    # if pixel.anchor and pixel.inside is not None:
                     if pixel.anchor:
                         self.add(loc, color='red')
+
                     # elif pixel.inside == None:
                     #     self.add(loc, color='black')
                     # elif pixel.inside:
@@ -92,12 +95,16 @@ class Display(Frame):
 
 
 class Pixel:
-    def __init__(self, loc, past=None, future=None, inside=None, anchor=None):
+    def __init__(self, loc, past=None, future=None, inside=None, anchor=None, segments=None):
         self.loc = loc
         self.past = past
         self.future = future
         self.inside = inside
         self.anchor = anchor
+        if segments == None:
+            self.segments = []
+        else:
+            segments = segments
 
     @property
     def x(self):
@@ -178,6 +185,8 @@ class Drawing:
             if pixel == loop[0]:
                 break
         self.loop = loop
+        self.segments = []
+        self.traverse()
 
     def get_direction(self, pixel, vertical, vector=False):
         x, y = pixel.loc
@@ -214,17 +223,27 @@ class Drawing:
                 pass
         return None
 
-    def traverse(self, start=0, stop=None):
+    def traverse(self, start=False, stop=False):
         """
         OPTIMIZATIONS:
         if there are no anchors that can be reached by the segment, dont include it (advancing it will add unnecessary length to loop)
 
         """
-        segments = []
-        head = self.loop[start]
-        stop = head.future
+        if not start:
+            start = self.loop[0]
+        # segments = []
+        head = start
+        # stop = head.future
         anchor_flag = False
-        stop_flag = False
+        if stop:
+            stop_flag = True
+            # anchor_flag = True
+            stop = stop.future
+            stop_early = True
+        else:
+            stop_flag = False
+            stop = head.future
+            stop_early = False
         while True:
             if head is stop:
                 if stop_flag:
@@ -251,16 +270,24 @@ class Drawing:
                     head = head.future
                     break
             if len(pixels) > 1:
-                segments.append({
+                segment = {
                     "pixels": pixels,
                     "vertical": vertical,
                     "direction": direction
-                })
-        return segments
+                }
+                self.segments.append(segment)
+                for pixel in pixels:
+                    if segment not in pixel.segments:
+                        pixel.segments.append(segment)
+            if stop_early and head.future == stop:
+                break
+        return True
 
     def step(self):
         # find the longest segment in the loop
-        segments = self.traverse()
+        # self.segments = self.traverse()
+        segments = self.segments
+        flagged = []
         # print_segments(segments)
         try:
             segment = max(segments, key=lambda segment: len(segment["pixels"]))
@@ -269,7 +296,7 @@ class Drawing:
             return False
         # OPTIMIZATION: if multiple segmentso of max length, pick the one that is closest to reaching an anchor
         # only consider segments with length of at least 3 (cant advance 1 or 2 pixel segments)
-
+        self.segments.remove(segment)
         vect = segment["direction"]
 
         # after advancing the segment, the first pixel of the segment will be in new_first_loc
@@ -279,6 +306,7 @@ class Drawing:
         first.future = new_first
         self.data[new_first.y][new_first.x].inside = None
         self.loop.append(new_first)
+        first.segments.remove(segment)
 
         # for all of the pixels in between the first and last, just advance them towards the inside without changing past or future
         past = new_first
@@ -289,15 +317,21 @@ class Drawing:
             new_pixel.past.future = new_pixel
             new_pixel.inside = None
             pixel.inside = False
+            pixel.segments = []
             pixel.future = None
             pixel.past = None
             past = new_pixel
             self.loop.remove(pixel)
             self.loop.append(new_pixel)
-            # self.data[pixel.y][pixel.x].inside = False
-            # pixel.loc = (pixel.loc[0] + vect[0], pixel.loc[1] + vect[1])
-            # self.data[pixel.y][pixel.x].inside = None
+
+            # neighbors = self.get_neighbors(new_pixel.loc)
+            # for neighbor_loc in neighbors:
+            #     neighbor = self.data[neighbor_loc[1]][neighbor_loc[0]]
+            #     if neighbor not in flagged:
+            #         flagged.append(neighbor)
+
         last = segment["pixels"][-1]
+        last.segments.remove(segment)
         new_last = self.data[last.loc[1] + vect[1]][last.loc[0] + vect[0]]
         new_last.past = past
         new_last.past.future = new_last
@@ -307,6 +341,35 @@ class Drawing:
         self.data[new_last.y][new_last.x].inside = None
         self.loop.append(new_last)
 
+        self.display.refresh()
+
+        flagged = []
+        redo_segments = []
+        pixel = first
+        while pixel is not last.future:
+            flagged.append(pixel)
+            neighbors = self.get_neighbors(pixel.loc)
+            for neighbor_loc in neighbors:
+                neighbor = self.data[neighbor_loc[1]][neighbor_loc[0]]
+                if neighbor not in flagged:
+                    if neighbor.inside == None:
+                        for seg in neighbor.segments:
+                            if seg not in redo_segments:
+                                redo_segments.append(seg)
+            pixel = pixel.future
+
+        for segment in redo_segments:
+            try:
+                self.segments.remove(segment)
+            except:
+                pass
+            # for pixel in segment["pixels"]:
+            #     pixel.segments = []
+            self.traverse(start=segment["pixels"][0],
+                          stop=segment["pixels"][-1])
+
+        self.traverse(start=new_first, stop=new_last)
+        # self.segments = self.traverse()
         return True
 
     def is_valid_loc(self, loc):
@@ -369,15 +432,16 @@ def print_segments(segments):
 
 
 def main():
-    start_time = time.time()
     # im, scale = Image.open('sliver.jpg'), 10
-    # im, scale = Image.open('contrast_micro.jpg'), 2
-    # im, scale = Image.open('contrast_tiny.jpg'), 1
-    # im, scale = Image.open('contrast_small.jpg'), 1
-    # im = Image.open('contrast.jpg')
-    im, scale = Image.open('dithered.png'), 1
+    im, scale = Image.open('rac_small.jpg'), 10
 
-    # im, scale = Image.open('face_tiny.jpg'), 1
+    # im, scale = Image.open('contrast_small.jpg'), 1
+    # im, scale = Image.open('contrast_tiny.jpg'), 1
+    # im, scale = Image.open('face_tiny.jpg'), 2
+    # im, scale = Image.open('Untitled.jpg'), 2
+
+    # im, scale = Image.open('contrast_micro.jpg'), 2
+    # im = Image.open('contrast.jpg')
     # im = Image.open('sargent.jpg')
 
     dithered = im.convert('1')
@@ -385,20 +449,27 @@ def main():
     drawing = Drawing(source)
     root = Tk()
     display = Display(root, drawing, scale=scale, ext=True)
+    drawing.display = display
     display.refresh()
 
+    # segments = drawing.traverse()
+    # print_segments(segments)
+    # display.load()
+    # display.refresh()
+    # drawing.display = display
     while True:
+        # display.refresh()
+        # print_segments(drawing.segments)
         # keyboard.wait('space')
         if not drawing.step():
-            display.refresh()
+            # display.refresh()
             break
-        # if drawing.counter > 200:
-        #     drawing.counter = 0
-        #     display.refresh()
+        # if drawing.counter > 100:
+            # drawing.counter = 0
+            # display.refresh()
+        display.refresh()
         drawing.counter += 1
 
-    end_time = time.time()
-    print("Time: ", int(end_time-start_time))
     drawing.save('test.png')
     root.mainloop()
 
