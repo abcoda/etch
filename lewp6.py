@@ -84,12 +84,12 @@ class Display(Frame):
                         self.add((loc[0] + vect[0]*i/self.n,
                                   loc[1] + vect[1]*i/self.n), color="black")
                     self.add(loc, color='black')
-                # if pixel.anchor:
-                #     self.add(loc, color='red')
-                # elif pixel.inside:
-                    # self.add(loc, color='blue')
-                # elif pixel.inside == False:
-                    # self.add(loc, color='green')
+                if pixel.anchor:
+                    self.add(loc, color='red')
+                elif pixel.inside:
+                    self.add(loc, color='blue')
+                elif pixel.inside == False:
+                    self.add(loc, color='green')
                 # elif col % 2 == row % 2:
                     # self.add(loc, color='#ddd')
                 # else:
@@ -151,6 +151,8 @@ class Drawing:
 
         # Data is a 2D numpy array of pixel objects. Black pixels from the source become anchor points
         self.data = []
+        self.anchor_count = 0
+        self.num_anchors = 0
         for j in range(self.h):
             self.data.append([])
             for i in range(self.w):
@@ -158,51 +160,278 @@ class Drawing:
                     (i, j),
                     anchor=not source[j][i]
                 ))
-
-        # create initial loop along outer boundary
+################################
         data = self.data
-        first = data[0][0]
-        past = first
 
-        # starting at the top left, work around the outside border clockwise, setting each pixels past and future
-        for i in range(self.w):
-            current = data[0][i]
-            current.past = past
-            current.past.future = current
-            past = current
-        for j in range(1, self.h):
-            current = data[j][self.w - 1]
-            current.past = past
-            current.past.future = current
-            past = current
-        for i in range(self.w - 2, -1, -1):
-            current = data[self.h - 1][i]
-            current.past = past
-            current.past.future = current
-            past = current
-        for j in range(self.h-2, 0, -1):
-            current = data[j][0]
-            current.past = past
-            current.past.future = current
-            past = current
-        current.future = first
-        first.past = current
-
-        # mark all pixels contained inside the loop as "inside", and outside as "not inside".
-        # Loop pixels have None value for "inside"
-        for j in range(1, self.h - 1):
-            for i in range(1, self.w - 1):
-                self.data[j][i].inside = True
-
-        # the loop list holds references to all of the pixels that are currently part of the loop
-        loop = []
-        pixel = self.data[0][0]
-        while True:
-            loop.append(pixel)
-            pixel = pixel.future
-            if pixel == loop[0]:
+        x_max = []
+        for i in range(self.w-1, -1, -1):
+            for j in range(self.h):
+                if data[j][i].anchor:
+                    x_max.append(data[j][i])
+            if len(x_max) > 0:
                 break
+
+        y_min = []
+        for j in range(self.h):
+            for i in range(self.w):
+                if data[j][i].anchor:
+                    y_min.append(data[j][i])
+            if len(y_min) > 0:
+                break
+
+        head = y_min[0]
+        head.past = None
+        loop = []
+
+        target_x = y_min[-1].x
+        while head.x < target_x:
+            loop.append(head)
+            future = data[head.y][head.x + 1]
+            head.future = future
+            future.past = head
+            head = future
+
+        while head.x < x_max[0].x:
+            loop.append(head)
+            future = data[head.y + 1][head.x]
+            head.future = future
+            future.past = head
+            head = future
+
+            row_max = False
+            for pixel in data[head.y][head.x:]:
+                if pixel.anchor:
+                    row_max = pixel
+
+            if row_max:
+                while head.x < row_max.x:
+                    loop.append(head)
+                    future = data[head.y][head.x + 1]
+                    head.future = future
+                    future.past = head
+                    head = future
+
+        while head.y < x_max[-1].y:
+            loop.append(head)
+            future = data[head.y + 1][head.x]
+            head.future = future
+            future.past = head
+            head = future
+
+        if head.y < self.h - 1:
+            loop.append(head)
+            future = data[head.y + 1][head.x]
+            head.future = future
+            future.past = head
+            head = future
+
+        x_max = False
+        for i in range(head.x, -1, -1):
+            for j in range(head.y + 1, self.h):
+                if data[j][i].anchor:
+                    x_max = data[j][i]
+            if x_max:
+                break
+
+        while x_max:
+            while head.x > x_max.x:
+                loop.append(head)
+                future = data[head.y][head.x-1]
+                head.future = future
+                future.past = head
+                head = future
+            while head.y < x_max.y:
+                loop.append(head)
+                future = data[head.y+1][head.x]
+                head.future = future
+                future.past = head
+                head = future
+            x_max = False
+            for i in range(head.x, -1, -1):
+                for j in range(head.y + 1, self.h):
+                    if data[j][i].anchor:
+                        x_max = data[j][i]
+                if x_max:
+                    break
+
+        x_min = False
+        for pixel in data[head.y]:
+            if pixel.anchor:
+                x_min = pixel
+                break
+
+        while head.x > x_min.x:
+            loop.append(head)
+            future = data[head.y][head.x - 1]
+            head.future = future
+            future.past = head
+            head = future
+
+        if head.x > 0:
+            loop.append(head)
+            future = data[head.y][head.x - 1]
+            head.future = future
+            future.past = head
+            head = future
+
+        # loop.append(head)
+        # future = data[head.y-1][head.x]
+        # head.future = future
+        # future.past = head
+        # head = future
+
+        x_min = []
+        for i in range(self.w):
+            for j in range(self.h):
+                if data[j][i].anchor:
+                    x_min.append(data[j][i])
+            if len(x_min) > 0:
+                break
+
+        while head.x > x_min[-1].x:  # chaned
+            loop.append(head)
+            future = data[head.y - 1][head.x]
+            head.future = future
+            future.past = head
+            head = future
+
+            row_min = False
+            for pixel in data[head.y][:head.x]:
+                if pixel.anchor:
+                    row_min = pixel
+                    break
+
+            if row_min:
+                while head.x > row_min.x:
+                    loop.append(head)
+                    future = data[head.y][head.x - 1]
+                    head.future = future
+                    future.past = head
+                    head = future
+
+        while head.y > x_min[0].y:
+            loop.append(head)
+            future = data[head.y - 1][head.x]
+            head.future = future
+            future.past = head
+            head = future
+
+        if head.y > 0:
+            loop.append(head)
+            future = data[head.y - 1][head.x]
+            head.future = future
+            future.past = head
+            head = future
+
+        x_min = False
+        for i in range(head.x, self.w-1):
+            for j in range(head.y):
+                if data[j][i].anchor:
+                    x_min = data[j][i]
+            if x_min:
+                break
+
+        while x_min:
+            while head.x < x_min.x:
+                loop.append(head)
+                future = data[head.y][head.x+1]
+                head.future = future
+                future.past = head
+                head = future
+            while head.y > x_min.y:
+                loop.append(head)
+                future = data[head.y-1][head.x]
+                head.future = future
+                future.past = head
+                head = future
+            x_min = False
+            for i in range(head.x, self.w-1):
+                for j in range(head.y - 1, -1, -1):
+                    if data[j][i].anchor:
+                        x_min = data[j][i]
+                if x_min:
+                    break
+
+        for row in data:
+            for pixel in row:
+                pixel.inside = True
+
+        for pixel in loop:
+            pixel.inside = None
+
+        for row in data:
+            x_min = self.w
+            x_max = 0
+            for pixel in row:
+                if pixel.inside == None:
+                    if pixel.x < x_min:
+                        x_min = pixel.x
+                    if pixel. x > x_max:
+                        x_max = pixel.x
+            for pixel in row:
+                if pixel.x < x_min:
+                    pixel.inside = False
+                elif pixel.x > x_max:
+                    pixel.inside = False
+                else:
+                    pixel.inside = True
+
+################################
+        # # create initial loop along outer boundary
+        # data = self.data
+        # first = data[0][0]
+        # past = first
+
+        # # starting at the top left, work around the outside border clockwise, setting each pixels past and future
+        # for i in range(self.w):
+        #     current = data[0][i]
+        #     current.past = past
+        #     current.past.future = current
+        #     past = current
+        # for j in range(1, self.h):
+        #     current = data[j][self.w - 1]
+        #     current.past = past
+        #     current.past.future = current
+        #     past = current
+        # for i in range(self.w - 2, -1, -1):
+        #     current = data[self.h - 1][i]
+        #     current.past = past
+        #     current.past.future = current
+        #     past = current
+        # for j in range(self.h-2, 0, -1):
+        #     current = data[j][0]
+        #     current.past = past
+        #     current.past.future = current
+        #     past = current
+        # current.future = first
+        # first.past = current
+
+        # # mark all pixels contained inside the loop as "inside", and outside as "not inside".
+        # # Loop pixels have None value for "inside"
+        # for j in range(1, self.h - 1):
+        #     for i in range(1, self.w - 1):
+        #         self.data[j][i].inside = True
+
+        # # the loop list holds references to all of the pixels that are currently part of the loop
+        # loop = []
+        # pixel = self.data[0][0]
+        # while True:
+        #     loop.append(pixel)
+        #     pixel = pixel.future
+        #     if pixel == loop[0]:
+        #         break
+
+        #########################################################
         self.loop = loop
+        for row in data:
+            for pixel in row:
+                if pixel.anchor:
+                    self.num_anchors += 1
+                    if pixel.inside == None:
+                        self.anchor_count += 1
+
+        for pixel in loop:
+            pixel.inside = None
 
         # get the initial segments of the loop by traversing the entire loop
         self.segments = self.traverse()
@@ -344,7 +573,7 @@ class Drawing:
                 segment = random.choice(choices)
             # if there are no available segments to move, the drawing is complete
             except:
-                print("No segments")
+                print("\nNo segments")
                 return False, False
             # if the compress parameter is true, the loop closes in on itself as much as possible, even
             # when unnecessary for reaching anchor points
@@ -399,7 +628,8 @@ class Drawing:
         self.data[new_first.y][new_first.x].inside = None
         self.loop.append(new_first)
         first.segments.remove(segment)
-        new_pixels = [new_first, first]
+        # new_pixels = [new_first, first]
+        new_pixels = [new_first]
 
         removed_pixels = []
         for pixel in segment["pixels"]:
@@ -446,7 +676,7 @@ class Drawing:
         self.loop.append(new_last)
         last.segments.remove(segment)
         new_pixels.append(new_last)
-        new_pixels.append(last)
+        # new_pixels.append(last)
 
         # remove the current segment (it's details are no longer accurate)
         self.segments.remove(segment)
@@ -543,6 +773,8 @@ class Drawing:
             past_direction = (loc[0] - past_loc[0], loc[1] - past_loc[1])
             added_pixels.append(
                 {"loc": loc, "vect_future": future_direction, "vect_past": past_direction})
+            if pixel.anchor:
+                self.anchor_count += 1
 
         return removed_pixels, added_pixels
 
@@ -637,6 +869,7 @@ def print_segments(segments):
 def loop(im, show=False, scale=1, compress=True, timer=True, filename='latest.png', n=2):
     start_time = time.time()
     dithered = im.convert('1')
+    # dithered.show()
     source = np.array(dithered)
     drawing = Drawing(source)
     if show:
@@ -644,16 +877,29 @@ def loop(im, show=False, scale=1, compress=True, timer=True, filename='latest.pn
         display = Display(root, drawing, scale=scale, n=n)
         drawing.display = display
         display.load()
+        # display.root.update()
+        # drawing.save('test.png')
+        # time.sleep(5000)
 
+    # time.sleep(1000)
+    name_counter = 0
     removed_pixels, added_pixels = drawing.step(compress=compress)
     while added_pixels:
+        # anchor_count = 0
+        # for pixel in drawing.loop:
+        # if pixel.anchor:
+        # anchor_count += 1
+        print(f"\r -- {drawing.anchor_count}/{drawing.num_anchors}", end='')
+
         if show:
-            display.update(removed_pixels, added_pixels)
-
-            if drawing.counter > 50:
+            # keyboard.wait('space')
+            # display.update(removed_pixels, added_pixels)
+            # display.root.update()
+            if drawing.counter > 8:
                 drawing.counter = 0
-                display.root.update()
-
+            # display.root.update()
+                # drawing.save(f'elliot2/{name_counter}.png')
+                name_counter += 1
             else:
                 drawing.counter += 1
 
@@ -680,12 +926,14 @@ def main():
     # im, scale = Image.open('images/face_tiny.jpg'), 1
     # im, scale = Image.open('images/kramer_edited.jpg'), 1
     # im, scale = Image.open('images/sargent_0.jpg'), 1
-    im, scale = Image.open('images/d1.jpg'), 1
+    # im, scale = Image.open('images/d2.jpg'), 1
+    im, scale = Image.open('images/angela.png'), 1
+
     # im, scale = Image.open('images/tritone.jpg'), 1
     # im, scale = Image.open('images/grid.png'), 1
 
+    # loop(im, scale=scale, compress=True, show=True, n=2)
     loop(im, scale=scale, compress=True, show=False, n=2)
-    # loop(im, scale=scale, compress=False, show=False, n=2)
 
 
 if __name__ == '__main__':

@@ -2,6 +2,7 @@ from tkinter import Tk, Canvas, Frame, BOTH
 import csv
 from PIL import Image
 from get_path import get_path
+import time
 
 
 class Display(Frame):
@@ -32,12 +33,14 @@ def animate(im='latest.png'):
     root = Tk()
     w, h = im.size
     display = Display(root, (w, h), scale=1)
+    root.update()
+    time.sleep(5)
     path = get_path(im)
     counter = 0
     for loc in path:
         display.add(loc)
         counter += 1
-        if counter > 50:
+        if counter > 10:
             root.update()
             counter = 0
     root.mainloop()

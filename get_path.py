@@ -4,8 +4,17 @@ import numpy as np
 
 
 def get_path(im, n=2):
-    data = np.array(im, dtype='bool')
-    h, w = data.shape
+    source = np.array(im, dtype='bool')
+    if len(source.shape) > 2:
+        h, w, _ = source.shape
+        data = []
+        for row in range(len(source)):
+            data.append([])
+            for col in range(len(source[0])):
+                data[row].append(source[row][col][1])
+    else:
+        data = source
+        h, w = source.shape
     x, y = False, False
     for row in range(h):
         for col in range(w):
